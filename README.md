@@ -169,3 +169,20 @@ if grep -q "Metazoa" $report; then
 fi
 ```
 
+## Get combined summary report
+```
+project=""
+
+mkdir -p Summary_${project}
+
+cp *_output/03_*_KFN/*.euka Summary_${project}/
+for i in $(ls Summary_${project}/*.euka | cut -d'/' -f2 | cut -d'.' -f1); do
+        cat Summary_${project}/${i}.*.euka | awk '{print $1 "\t" $2 "\t" $3 "\t" $6 "\t" $7 "\t" $8}' > Summary_${project}/${i}.report;
+done
+files=$(ls Summary_${project}/*.report | tr '\n' ' ' | sed '$s/ $/\n/')
+kraken-biom --max D --min SS --fmt tsv --output_fp Summary_${project}/Summary_${project}_D_S_output.tsv $files
+
+sed -i '1d' Summary_${project}/Summary_${project}_D_S_output.tsv
+sed '1d' Summary_${project}/Summary_${project}_D_S_output.tsv | cut -f1 | taxonkit lineage -n -r > Summary_${project}/Summary_${project}_D_S_output.lineages
+taxonkit reformat --output-ambiguous-result --format "{K};{k};{p};{c};{o};{f};{g};{s};{t}" Summary_${project}/Summary_${project}_D_S_output.lineages | csvtk -H -t cut -f 1,4,3,5 | csvtk -H -t sep -f 4 -s ';' -R | csvtk add-header -t -n taxid,rank,name,superkingdom,kingdom,phylum,class,order,family,genus,species,subspecies | paste - Summary_${project}/Summary_${project}_D_S_output.tsv > Summary_${project}/Summary_${project}_D_S_full.tsv
+```

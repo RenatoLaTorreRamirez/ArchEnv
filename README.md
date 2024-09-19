@@ -32,25 +32,6 @@ seqkit grep --use-regexp --by-seq --invert-match --only-positive-strand --patter
 seqkit grep --use-regexp --by-seq --invert-match --only-positive-strand --pattern "^ACACTCTTTCCCTACACGACGCTCTTCCGATCT" ${prefix}_output/adap1_kmer2_${prefix}.col.s.fq \
 | fastq-grep --invert-match "ACACTCTTTCCCTACACGACGCTCTTCCGATCT" --mismatches="${prefix}_output/adap2_kmer2_${prefix}.col.s.mis.fq" > ${prefix}_output/adap2_kmer2_${prefix}.col.s.fq
 ```
-### Trim residual adapters and poly A from paired end reads
-```
-fastq-grep --invert-match "AAAAA$" --mismatches="${prefix}_output/kmer_${prefix}.pair1.truncated.mis" ${prefix}_output/${prefix}.pair1.truncated > ${prefix}_output/kmer_${prefix}.pair1.truncated
-seqkit grep --use-regexp --by-seq --invert-match --only-positive-strand --pattern "^AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC" ${prefix}_output/kmer_${prefix}.pair1.truncated \
-| fastq-grep --invert-match "AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC" --mismatches="${prefix}_output/adap1_kmer_${prefix}.pair1.truncated.mis" > ${prefix}_output/adap1_kmer_${prefix}.pair1.truncated
-fastq-grep --invert-match "^TTTTT" --mismatches="${prefix}_output/kmer_${prefix}.pair2.truncated.mis" ${prefix}_output/${prefix}.pair2.truncated > ${prefix}_output/kmer_${prefix}.pair2.truncated
-seqkit grep --use-regexp --by-seq --invert-match --only-positive-strand --pattern "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT$" ${prefix}_output/kmer_${prefix}.pair2.truncated \
-| fastq-grep --invert-match "AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT" --mismatches="${prefix}_output/adap1_kmer_${prefix}.pair2.truncated.mis" > ${prefix}_output/adap1_kmer_${prefix}.pair2.truncated
-```
-Separate unpaired reads and add to collapsed/singleton file
-```
-fastq_pair ${prefix}_output/adap1_kmer_${prefix}.pair1.truncated ${prefix}_output/adap1_kmer_${prefix}.pair2.truncated
-if [ -s ${prefix}_output/adap1_kmer_${prefix}.pair1.truncated.single.fq ]; then
-        cat ${prefix}_output/adap1_kmer_${prefix}.pair1.truncated.single.fq >> ${prefix}_output/adap2_kmer2_${prefix}.col.s.fq;
-fi
-if [ -s ${prefix}_output/adap1_kmer_${prefix}.pair2.truncated.single.fq ]; then
-        cat ${prefix}_output/adap1_kmer_${prefix}.pair2.truncated.single.fq >> ${prefix}_output/adap2_kmer2_${prefix}.col.s.fq;
-fi
-```
 ### Trim and recover discarded reads (collapsed and singleton)
 ```
 scraps=""
@@ -81,47 +62,10 @@ if [ "$scraps" = 1 ]; then
         cat ${prefix}_output/*col.s.mis.trim.fq >> ${prefix}_output/adap2_kmer2_${prefix}.col.s.fq;
 fi
 ```
-### Trim and recover discarded reads (paired reads)
-```
-pscraps=""
-if [ -s ${prefix}_output/kmer_${prefix}.pair1.truncated.mis ]; then
-        seqkit grep --use-regexp --by-seq --invert-match --only-positive-strand --pattern "^AAAAA" ${prefix}_output/kmer_${prefix}.pair1.truncated.mis \
-        | fastq-grep --trim_after --trim_match "AAAAA" > ${prefix}_output/kmer_${prefix}.pair1.truncated.mis.trim;
-        pscraps=1;
-fi
-if [ -s ${prefix}_output/adap1_kmer_${prefix}.pair1.truncated.mis ]; then
-        fastq-grep --trim_after --trim_match "AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC" ${prefix}_output/adap1_kmer_${prefix}.pair1.truncated.mis > ${prefix}_output/adap1_kmer_${prefix}.pair1.truncated.mis.trim;
-        pscraps=1;
-fi
-if [ -s ${prefix}_output/kmer_${prefix}.pair2.truncated.mis ]; then
-        seqtk seq -r ${prefix}_output/kmer_${prefix}.pair2.truncated.mis \
-        | seqkit grep --use-regexp --by-seq --invert-match --only-positive-strand --pattern "^AAAAA" \
-        | fastq-grep --trim_after --trim_match "AAAAA" \
-        | seqtk seq -r > ${prefix}_output/kmer_${prefix}.pair2.truncated.mis.trim;
-        pscraps=1;
-fi
-if [ -s ${prefix}_output/adap1_kmer_${prefix}.pair2.truncated.mis ]; then
-        seqtk seq -r ${prefix}_output/adap1_kmer_${prefix}.pair2.truncated.mis \
-        | fastq-grep --trim_after --trim_match "ACACTCTTTCCCTACACGACGCTCTTCCGATCT" \
-        | seqtk seq -r > ${prefix}_output/adap1_kmer_${prefix}.pair2.truncated.mis.trim;
-        pscraps=1;
-fi
-
-if [ "$pscraps" = 1 ]; then
-        cat ${prefix}_output/*kmer*.truncated.mis.trim \
-        | seqkit fx2tab \
-        | sed 's/^/S_/' \
-        | seqkit tab2fx >> ${prefix}_output/adap2_kmer2_${prefix}.col.s.fq;
-fi
-```
 ### Remove low complexity sequences
 ```
-sga preprocess --remove-adapter-fwd=AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC --remove-adapter-rev=AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT --dust-threshold=4 --min-length=30 ${prefix}_output/adap2_kmer2_${prefix}.col.s.fq --out=${prefix}_output/adap2_kmer2_${prefix}.col.s.pp.fq
+sga preprocess --remove-adapter-fwd=AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC --remove-adapter-rev=AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT --dust-threshold=1 --min-length=30 ${prefix}_output/adap2_kmer2_${prefix}.col.s.fq --out=${prefix}_output/adap2_kmer2_${prefix}.col.s.pp.fq
 bbmap/dedupe.sh threads=$threads in=${prefix}_output/adap2_kmer2_${prefix}.col.s.pp.fq out=${prefix}_output/${prefix}.unpaired.dedup.fq
-
-sga preprocess --remove-adapter-fwd=AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC --remove-adapter-rev=AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT --dust-threshold=4 --min-length=30 --pe-mode=1 ${prefix}_output/adap1_kmer_${prefix}.pair1.truncated.paired.fq ${prefix}_output/adap1_kmer_${prefix}.pair2.truncated.paired.fq --out=${prefix}_output/adap1_kmer_${prefix}.pair12.truncated.paired.pp.fq
-bbmap/dedupe.sh interleaved=true threads=$threads in=${prefix}_output/adap1_kmer_${prefix}.pair12.truncated.paired.pp.fq out=${prefix}_output/adap1_kmer_${prefix}.pair12.truncated.paired.pp.dedup.fq
-bbmap/reformat.sh in=${prefix}_output/adap1_kmer_${prefix}.pair12.truncated.paired.pp.dedup.fq out1=${prefix}_output/${prefix}.pair1.dedup.fq out2=${prefix}_output/${prefix}.pair2.dedup.fq
 ```
 ### Clean intermediate files
 ```
@@ -136,33 +80,27 @@ rm ${prefix}_output/${prefix}.col.s.fq
 mkdir -p ${prefix}_output/01_${prefix}_KPF
 kraken2 --db /path/to/KRAKEN2_PLUSPF --threads $threads --minimum-base-quality 20 --report ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.unpaired.report --confidence 0.05 --minimum-hit-groups 3 --report-minimizer-data --classified-out ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.unpaired.c.sequences --unclassified-out ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.unpaired.unc.sequences --output ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.unpaired.output ${prefix}_output/${prefix}.unpaired.dedup.fq 2>&1 \
 | tee ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.unpaired.log
-kraken2 --paired --db /path/to/KRAKEN2_PLUSPF --threads $threads --minimum-base-quality 20 --report ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.paired.report --confidence 0.05 --minimum-hit-groups 3 --report-minimizer-data --classified-out ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.paired#.c.sequences --unclassified-out ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.paired#.unc.sequences --output ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.paired.output ${prefix}_output/${prefix}.pair1.dedup.fq ${prefix}_output/${prefix}.pair2.dedup.fq 2>&1 \
-| tee ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.paired.log
-combine_kreports.py --reports ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.unpaired.report ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.paired.report --output ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.combined.report --only-combined --no-headers
 ```
 ### Eukaryothe pathogen classification using EuPathDB database
 ```
 mkdir -p ${prefix}_output/02_${prefix}_KEP
 kraken2 --db /path/to/KRAKEN2_EuPath --threads $threads --minimum-base-quality 20 --report ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.unpaired.report --confidence 0.05 --minimum-hit-groups 3 --report-minimizer-data --classified-out ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.unpaired.c.sequences --unclassified-out ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.unpaired.unc.sequences --output ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.unpaired.output ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.unpaired.unc.sequences 2>&1 \
 | tee ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.unpaired.log
-kraken2 --paired --db /path/to/KRAKEN2_EuPath --threads $threads --minimum-base-quality 20 --report ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.paired.report --confidence 0.05 --minimum-hit-groups 3 --report-minimizer-data --classified-out ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.paired#.c.sequences --unclassified-out ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.paired#.unc.sequences --output ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.paired.output ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.paired_1.unc.sequences ${prefix}_output/01_${prefix}_KPF/${prefix}.plusPF.paired_2.unc.sequences 2>&1 \
-| tee ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.paired.log
-combine_kreports.py --reports ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.unpaired.report ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.paired.report --output ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.combined.report --only-combined --no-headers
 ```
 ### Full NCBI NT classification using 2023 DB
 ```
 mkdir -p ${prefix}_output/03_${prefix}_KFN
-kraken2 --db /path/to/KRAKEN2_NCBI_NT --threads $threads --minimum-base-quality 20 --report ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.unpaired.report --confidence 0.05 --minimum-hit-groups 3 --report-minimizer-data --classified-out ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.unpaired.c.sequences --unclassified-out ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.unpaired.unc.sequences --output ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.unpaired.output ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.unpaired.unc.sequences 2>&1 \
+kraken2 --db /path/to/KRAKEN2_NCBI_NT --threads $threads --minimum-base-quality 20 --report ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.unpaired.report --confidence 0.05 --minimum-hit-groups 3 --classified-out ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.unpaired.c.sequences --unclassified-out ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.unpaired.unc.sequences --output ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.unpaired.output ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.unpaired.unc.sequences 2>&1 \
 | tee ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.unpaired.log
-kraken2 --paired --db /path/to/KRAKEN2_NCBI_NT --threads $threads --minimum-base-quality 20 --report ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.paired.report --confidence 0.05 --minimum-hit-groups 3 --report-minimizer-data --classified-out ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.paired#.c.sequences --unclassified-out ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.paired#.unc.sequences --output ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.paired.output ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.paired_1.unc.sequences ${prefix}_output/02_${prefix}_KEP/${prefix}.EuPath.paired_2.unc.sequences 2>&1 \
-| tee ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.paired.log
-combine_kreports.py --reports ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.unpaired.report ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.paired.report --output ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.combined.report --only-combined --no-headers
 ```
-## Reduce report
+### Prepare input for aMETA
 ```
-report=${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.combined.report
-total_lines=$(cat $report | wc -l)
+mkdir -p aMeta_input_fastq
+extract_kraken_reads.py --taxid 0 2759 --include-children --fastq-output -r ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.unpaired.report -k ${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.unpaired.output -s ${prefix}_output/${prefix}.unpaired.dedup.fq --output aMeta_input_fastq/${prefix}_filtered.fq
 
+mkdir -p aMeta_input_taxID
+report=${prefix}_output/03_${prefix}_KFN/${prefix}.NCBI_NT.unpaired.report
+total_lines=$(cat $report | wc -l)
 extract_lvl () {
         tax_lvl=$1
         tax_name=$2
@@ -180,7 +118,7 @@ extract_lvl () {
                 | sed -n "$lim1,${lim2}p"
         fi
 }
-
+rm ${report}.euka
 if grep -q "R1" $report; then
         extract_lvl "R1" "cellular organisms" > ${report}.id1
         report=${report}.id1
@@ -195,14 +133,26 @@ fi
 if grep -q "Metazoa" $report; then
         extract_lvl "K" "Metazoa" >> ${report}.euka
 fi
+mkdir -p aMeta_input_taxID/${prefix}
+grep -P "\tS\t" ${report}.euka \
+| awk '$2 >= 150' \
+| cut -f5 \
+| sort \
+| uniq > aMeta_input_taxID/${prefix}/taxID.species
 ```
-
-## Get combined summary report
+### Prepare input for MALT in aMETA
+```
+cat aMeta_input_taxID/*/taxID.species \
+| sort \
+| uniq > aMeta_input_taxID/unique_species_taxid_list.txt
+taxonkit lineage -n -r aMeta_input_taxID/unique_species_taxid_list.txt \
+| taxonkit reformat --output-ambiguous-result --format "{s}" \
+| cut -f5 > aMeta_input_taxID/unique_species_names_list.txt
+```
+## Get kraken combined summary report
 ```
 project=""
-
 mkdir -p Summary_${project}
-
 cp *_output/03_*_KFN/*.euka Summary_${project}/
 for i in $(ls Summary_${project}/*.euka | cut -d'/' -f2 | cut -d'.' -f1); do
         cat Summary_${project}/${i}.*.euka \
@@ -220,4 +170,15 @@ taxonkit reformat --output-ambiguous-result --format "{K};{k};{p};{c};{o};{f};{g
 | csvtk -H -t sep -f 4 -s ';' -R \
 | csvtk add-header -t -n taxid,rank,name,superkingdom,kingdom,phylum,class,order,family,genus,species,subspecies \
 | paste - Summary_${project}/Summary_${project}_D_S_output.tsv > Summary_${project}/Summary_${project}_D_S_full.tsv
+```
+### Run aMETA (for bowtie2, malt, quantification)
+```
+snakemake --snakefile workflow/Snakefile --use-conda --jobs $threads --cores $threads --profile profile --resources mem_mb=512000 --omit-from KrakenUniq
+```
+### Get damage patterns
+```
+names_path="/path/to/names.dmp"
+nodes_path="/path/to/nodes.dmp"
+acc2tax_path="/path/to/acc2tax"
+metaDMG-cpp lca --names $names_path --nodes $nodes_path --acc2tax $acc2tax_path --sim_score_low 0.95 --sim_score_high 1.0 --threads $threads --bam results/BOWTIE2/${prefix}/AlignedToBowtie2DB.bam --out_prefix ${prefix}_output/04_${prefix}_damage/${prefix}_LCA
 ```

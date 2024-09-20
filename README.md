@@ -135,10 +135,40 @@ if grep -q "Metazoa" $report; then
 fi
 mkdir -p aMeta_input_taxID/${prefix}
 grep -P "\tS\t" ${report}.euka \
-| awk '$2 >= 150' \
+| awk '$2 >= 100' \ ##############
 | cut -f5 \
 | sort \
 | uniq > aMeta_input_taxID/${prefix}/taxID.species
+```
+### Get extra Arctic taxids
+```
+ArcticAnimal="/path/to/db/"
+PhyloNorway="/path/to/db/"
+
+mkdir -p Extra_arctic
+mkdir -p Extra_arctic/${prefix}
+bowtie2 --threads $threads -k 1000 -x $ArcticAnimal/ArcticAnimal_sup.fa -U aMeta_input_fastq/${prefix}_filtered.fq --no-unal \
+| samtools view -bS - > Extra_arctic/${prefix}/${prefix}.ArcticAnimal.bam
+for DB in $PhyloNorway/PhyloNorwayContigs_?.fasta; do
+  bowtie2 --threads $threads -k 1000 -x $DB -U aMeta_input_fastq/${prefix}_filtered.fq --no-unal \
+  | samtools view -bS - > Extra_arctic/${prefix}/${prefix}.$(basename $DB).bam
+done
+samtools merge --verbosity 5 -@ $threads Extra_arctic/${prefix}/${prefix}.merged.sam.gz Extra_arctic/${prefix}/*.bam
+samtools sort -n -@ $threads -O sam -o Extra_arctic/${prefix}/${prefix}.merged.sorted.sam Extra_arctic/${prefix}/${prefix}.merged.sam.gz
+
+names_path="/path/to/names.dmp"
+nodes_path="/path/to/nodes.dmp"
+acc2tax_path="/path/to/acc2tax"
+
+metaDMG-cpp lca --names $names_path --nodes $nodes_path --acc2tax $acc2tax_path --sim_score_low 0.95 --sim_score_high 1.0 --threads $threads --bam Extra_arctic/${prefix}/${prefix}.merged.sorted.sam --out Extra_arctic/${prefix}/${prefix}_LCA
+zcat Q1_LCA.lca.gz \
+| awk '$2 > 100' \ #######################
+| cut -f1 \
+| sort \
+| uniq >> aMeta_input_taxID/${prefix}/taxID.species
+sort aMeta_input_taxID/${prefix}/taxID.species \
+| uniq > aMeta_input_taxID/${prefix}/taxID.species2
+mv aMeta_input_taxID/${prefix}/taxID.species2 aMeta_input_taxID/${prefix}/taxID.species
 ```
 ### Prepare input for MALT in aMETA
 ```
@@ -177,8 +207,6 @@ snakemake --snakefile workflow/Snakefile --use-conda --jobs $threads --cores $th
 ```
 ### Get damage patterns
 ```
-names_path="/path/to/names.dmp"
-nodes_path="/path/to/nodes.dmp"
-acc2tax_path="/path/to/acc2tax"
+
 metaDMG-cpp lca --names $names_path --nodes $nodes_path --acc2tax $acc2tax_path --sim_score_low 0.95 --sim_score_high 1.0 --threads $threads --bam results/BOWTIE2/${prefix}/AlignedToBowtie2DB.bam --out_prefix ${prefix}_output/04_${prefix}_damage/${prefix}_LCA
 ```
